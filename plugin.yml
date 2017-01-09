@@ -1,0 +1,12 @@
+
+name: VsehoArena
+version: 0.0.1
+main: vsehoarena.VsehoArena
+depend: [WorldEdit]
+
+description: Set players whitch is located to the arena to player mode. Refill chest contain and give a basic equipment to every player. Game is over when only one player is alive.
+author: Luke Gryga
+website: http://lukasgry.ga
+database: false
+commands:
+    arena:
