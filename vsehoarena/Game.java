@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
@@ -49,30 +50,26 @@ public class Game implements Listener{
     }
     
     public String startGame(){
-        try {
-            if(initPlayers() <= 1){
-                return "[Arena]: There are not enought players in arena";
-            }
-            if(gameInProgress){
-                return "[Arena] Game is just running";
-            }
-            alivePlayers = players;
-            if(!playersOnStart()){
-                return "[Arena]: There are more player then number of Start chests";
-            }
-            arena.regenerateArena();
-            arena.tidyUp();
-            initScoreboard();
-            arena.divideWildItems();
-            Bukkit.getServer().getPluginManager().registerEvents(this, VsehoArena.SINGLETON);
-            players.forEach(p -> {
-                p.getInventory().clear();
-                p.sendMessage("[Arena]: Game started");});
-            gameInProgress = true;
-            return "[Arena]: You succesfuly started the GAME";
-        } catch (DataException | IOException | MaxChangedBlocksException ex) {
-            return "[Arena]: Fails occured. Arena wasn't regenerated";
+        if(initPlayers() <= 1){
+            return "[Arena]: There are not enought players in arena";
         }
+        if(gameInProgress){
+            return "[Arena] Game is just running";
+        }
+        arena.tidyUp();
+        arena.regenerateArena();
+        alivePlayers = players;
+        if(!playersOnStart()){
+            return "[Arena]: There are more player then number of Start chests";
+        }
+        initScoreboard();
+        arena.divideWildItems();
+        Bukkit.getServer().getPluginManager().registerEvents(this, VsehoArena.SINGLETON);
+        players.forEach(p -> {
+            p.getInventory().clear();
+            p.sendMessage("[Arena]: Game started");});
+        gameInProgress = true;
+        return "[Arena]: You succesfuly started the GAME";
     }
     
     @EventHandler
@@ -96,17 +93,22 @@ public class Game implements Listener{
     }
     
     private boolean playersOnStart(){
+        Set<Integer> rolled = new HashSet();
+        Random random = new Random();
         if(arena.getStartChests().size() < players.size()){
             return false;
         }
         List<Chest> lChests = new LinkedList();
         lChests.addAll(arena.getStartChests());
-        int counter = 0;
         for(Player p : players){
-            p.teleport(lChests.get(counter).getLocation().add(new Vector(0,2,0)));
-            arena.fillStartChest(lChests.get(counter));
+            Integer roll;
+            do{
+                roll = new Integer(random.nextInt(5));
+            }while(rolled.contains(roll));
+            p.teleport(lChests.get(roll).getLocation().add(new Vector(0,2,0)));
+            arena.fillStartChest(lChests.get(roll));
             p.setHealth(20);
-            counter++;
+            rolled.add(roll);
         }
         return true;
     }

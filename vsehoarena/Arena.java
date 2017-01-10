@@ -12,7 +12,11 @@ import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.bukkit.BukkitWorld;
 import com.sk89q.worldedit.world.DataException;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -20,10 +24,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Chest;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 /**
@@ -33,23 +42,23 @@ import org.bukkit.inventory.ItemStack;
 public class Arena {
     
     
-    private Random random = new Random();
+    private final Random random = new Random();
     
     private Game arenaGame;
     private String name;
     private Set<Chest> wildChests, startChests;
-    private Map<ItemStack, Integer> wildItems, startItems;
-    private String areaData;
+    private List<Inventory> wildItems;
+    private Inventory startItems;
     
     private Location l1;
     private Location l2;
 
     public Arena(String name, Location l1, Location l2){
-        this(name, l1, l2, new HashSet(), new HashSet(), new HashMap(), new HashMap());
+        this(name, l1, l2, new HashSet(), new HashSet(), new LinkedList(), null);
     }
     
     public Arena(String name, Location l1, Location l2, Set<Chest> wildChests, Set<Chest> startChests,
-            Map<ItemStack, Integer> wildItems, Map<ItemStack, Integer> startItems){
+            List<Inventory> wildItems, Inventory startItems){
         this.name = name;
         this.l1 = l1;
         this.l2 = l2;
@@ -57,6 +66,9 @@ public class Arena {
         this.startChests = startChests;
         this.wildItems = wildItems;
         this.startItems = startItems;
+        if(startItems == null){
+            this.startItems = Bukkit.createInventory(null, 54);
+        }
         this.arenaGame = new Game(this);
     }
 
@@ -64,20 +76,8 @@ public class Arena {
         return name;
     }
 
-    public Set<Chest> getWildChests() {
-        return wildChests;
-    }
-
     public Set<Chest> getStartChests() {
         return startChests;
-    }
-
-    public Map<ItemStack, Integer> getWildItems() {
-        return wildItems;
-    }
-
-    public Map<ItemStack, Integer> getStartItems() {
-        return startItems;
     }
 
     public Location getL1() {
@@ -87,22 +87,39 @@ public class Arena {
     public Location getL2() {
         return l2;
     }
-
-    public String getAreaData() {
-        return areaData;
-    }
     
-    public void regenerateArena() throws MaxChangedBlocksException, DataException, IOException{
-        EditSession es = new EditSession(new BukkitWorld(l1.getWorld()), 999999999);
-        File schematicFile = new File(VsehoArena.SINGLETON.getDataFolder(), name + ".schematic");
-        CuboidClipboard clipboard = CuboidClipboard.loadSchematic(schematicFile);
-        Location min = UtilLib.getMin(l1, l2);
-        Vector origin = new Vector(min.getBlockX(), min.getBlockY(), min.getBlockZ());
-        clipboard.paste(es, origin, false);
-    }
     
-    public String startGame(){
-        return arenaGame.startGame();
+    
+    public static Arena loadArena(String name){
+        File arenaFile = new File(VsehoArena.SINGLETON.getDataFolder(), name + ".arena");
+        FileInputStream fInStream;
+        ObjectInputStream objectIS;
+        HashMap<String, Object> deserialized = new HashMap();
+        try {
+            fInStream = new FileInputStream(arenaFile);
+            objectIS = new ObjectInputStream(fInStream);
+            deserialized = (HashMap)objectIS.readObject();
+        } catch (ClassNotFoundException | IOException ex) {
+            Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Arena " + name + " was not found", ex);
+            return null;
+        }
+        Bukkit.getServer().getConsoleSender().sendMessage(deserialized.toString());
+        
+        Location aLoc1 = Location.deserialize((Map<String, Object>)deserialized.get("loc1"));
+        Location aLoc2 = Location.deserialize((Map<String, Object>)deserialized.get("loc2"));
+        Set<Chest> aStartChst = deserializeChests((Map<String, Object>)deserialized.get("startChests"));
+        Set<Chest> aWildChst = deserializeChests((Map<String, Object>)deserialized.get("wildChests"));
+        Inventory aStartInv = deserializeInventory((Map<String, Object>)deserialized.get("startItems"));
+        List<Inventory> aWildInvs = deserializeInventories((Map<String, Object>)deserialized.get("wildItems"));
+        Arena a = new Arena(name, aLoc1, aLoc2, aWildChst, aStartChst, aWildInvs, aStartInv);
+        System.out.println(a.name);
+        System.out.println(a.l1);
+        System.out.println(a.l2);
+        System.out.println(serializeChestLocations(a.startChests));
+        System.out.println(serializeChestLocations(a.wildChests));
+        System.out.println(serializeInventory(a.startItems));
+        System.out.println(serializeInventories(a.wildItems));
+        return a;
     }
 
     public String addWildChests(Chest chest){
@@ -131,16 +148,73 @@ public class Arena {
         }
     }
     
+    public void showStartInv(Player p){
+        p.openInventory(startItems);
+    }
+    
+    public void showWildInv(int number, Player p){
+        if(number-1 < this.wildItems.size()){
+            p.openInventory(wildItems.get(number-1));
+        }else{
+            p.sendMessage("This inventory doesn't exist.");
+        }
+    }
+    
+    public String createNewWildInv(){
+        Inventory newInv = Bukkit.createInventory(null, 54);
+        wildItems.add(newInv);
+        return "Next " + wildItems.size() + ". inventory was created.";
+    }
+    
+    /**
+     * Register chest in arena. If arena already has registered this chest, cancel old registration and create new one.
+     * @param p - player who report will be send
+     * @param startChest if true, then register the start chest, the wild chest otherwise
+     * @param l1
+     * @param l2
+     * @return 
+     */
+    public String registerChest(boolean startChest, Location l1, Location l2){
+        if(l1.getBlock().getType() != Material.CHEST){
+            return "There is no chest on loc1";
+        }else{
+            Chest chest = (Chest)l1.getBlock().getState();
+            if(startChest){
+                return addStartChests(chest);
+            }else{
+                return addWildChests(chest);
+            }
+        }
+    }
+
+    
+    public void regenerateArena(){
+        try {
+            EditSession es = new EditSession(new BukkitWorld(l1.getWorld()), 999999999);
+            File schematicFile = new File(VsehoArena.SINGLETON.getDataFolder(), name + ".schematic");
+            CuboidClipboard clipboard = CuboidClipboard.loadSchematic(schematicFile);
+            Location min = UtilLib.getMin(l1, l2);
+            Vector origin = new Vector(min.getBlockX(), min.getBlockY(), min.getBlockZ());
+            clipboard.paste(es, origin, false);
+        } catch (IOException | DataException ex) {
+            Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Arena regenerating failed", ex);
+        } catch (MaxChangedBlocksException ex) {
+            Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Arena regenerating failed", ex);
+        }
+    }
+    
+    public String startGame(){
+        return arenaGame.startGame();
+    }
+    
     public void tidyUp(){
         wildChests.forEach((ch) -> {ch.getInventory().clear();});
         startChests.forEach(ch -> {ch.getInventory().clear();});
     }
     
     public void fillStartChest(Chest ch){
-        for(Map.Entry<ItemStack, Integer> e : startItems.entrySet()){
-            for(int i = 0; i<e.getValue(); i++){
-                ch.getInventory().addItem(e.getKey().clone());
-            }
+        for(ItemStack item : startItems.getContents()){
+            ch.getInventory().addItem(item);
         }
     }
     
@@ -148,49 +222,106 @@ public class Arena {
         List<Chest> lWildChests = new LinkedList();
         lWildChests.addAll(wildChests);
         int maxI = lWildChests.size();
-        for(Map.Entry<ItemStack, Integer> e: wildItems.entrySet()){
-            for(int i = 0; i<e.getValue(); i++){
-                int r = random.nextInt(maxI);
-                lWildChests.get(r).getInventory().addItem(e.getKey().clone());
+        for(Inventory inv : wildItems){
+            for(int i = 0; i<inv.getSize(); i++){
+                ItemStack item = inv.getItem(i);
+                int rand = random.nextInt(maxI);
+                lWildChests.get(rand).getInventory().addItem(item);
             }
         }
     }
-
-
-
-
-
     
-//    private String getAreaBlockData(){
-//        StringBuilder result = new StringBuilder();
-//        Location minLoc = VAS.getMin(getL1(), getL2());
-//        Location maxLoc = VAS.getMax(getL1(), getL2());
-//        Bukkit.getServer().getConsoleSender().sendMessage(minLoc.toString() + maxLoc.toString());
-//        for(int x = minLoc.getBlockX(); x < maxLoc.getBlockX(); x++){
-//            for(int y = minLoc.getBlockY(); y < maxLoc.getBlockY(); y++){
-//                for(int z = minLoc.getBlockZ(); z < maxLoc.getBlockZ(); z++){
-//                    result.append(new Location(minLoc.getWorld(), x, y, z).getBlock().getType().toString()).append(";");
-//                }
-//            }
-//        }
-//        return result.toString();
-//    }
-//    
-//    public void repairArena(){
-//        String[] blocks = areaData.split(";");
-//        Location minLoc = VAS.getMin(getL1(), getL2());
-//        Location maxLoc = VAS.getMax(getL1(), getL2());
-//        int i = 0;
-//        for(int x = minLoc.getBlockX(); x < maxLoc.getBlockX(); x++){
-//            for(int y = minLoc.getBlockY(); y < maxLoc.getBlockY(); y++){
-//                for(int z = minLoc.getBlockZ(); z < maxLoc.getBlockZ(); z++){
-//                    new Location(minLoc.getWorld(), x, y, z).getBlock().setType(Material.matchMaterial(blocks[i]));
-//                    i++;
-//                }
-//            }
-//        }
-//    }
     
+    public void saveArena(){
+        File arenaFile = new File(VsehoArena.SINGLETON.getDataFolder(), this.name + ".arena");
+        FileOutputStream fOutStream;
+        ObjectOutputStream objectOS;
+        Map<String,Object> serialized = new HashMap();
+        serialized.put("name", this.name);
+        serialized.put("loc1", this.l1.serialize());
+        serialized.put("loc2", this.l2.serialize());
+        serialized.put("startChests", serializeChestLocations(startChests));
+        serialized.put("wildChests", serializeChestLocations(wildChests));
+        serialized.put("startItems", serializeInventory(startItems));
+        serialized.put("wildItems", serializeInventories(wildItems));
+        try {
+            fOutStream = new FileOutputStream(arenaFile);
+            objectOS = new ObjectOutputStream(fOutStream);
+            objectOS.writeObject(serialized);
+            objectOS.close();
+        } catch (IOException ex) {
+            Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Saving arena failed", ex);
+            return;
+        }
+    }
+                
+    private static Map<String, Object> serializeChestLocations(Set<Chest> blocks){
+        List<Location> locs = blocks.stream()
+                .map((Chest ch)->{return ch.getLocation();})
+                .collect(Collectors.toList());
+        Map<String, Object> serialized = new HashMap();
         
+        for(int i = 0; i < locs.size(); i++){
+            serialized.put(String.valueOf(i), locs.get(i).serialize());
+        }
+        
+        return serialized;
+    }
+    
+    private static Set<Chest> deserializeChests(Map<String, Object> locations){
+        Set<Chest> deserialized = new HashSet();
+        for(Object obj : locations.values()){
+            Location l = Location.deserialize((Map<String, Object>)obj);
+            if(l.getBlock().getType().equals(Material.CHEST)){
+                deserialized.add((Chest)l.getBlock().getState());
+            }
+        }
+        return deserialized;
+    }
+    
+    private static Map<String, Object> serializeInventories(List<Inventory> inventories){
+        Map<String, Object> serialized = new HashMap();
+        
+        for(int i = 0; i<inventories.size(); i++){
+            serialized.put(String.valueOf(i), serializeInventory(inventories.get(i)));
+        }
+        
+        return serialized;
+    }
+    
+    private static List<Inventory> deserializeInventories(Map<String, Object> inventories){
+        List<Inventory> deserialized = new LinkedList();
+        inventories.values().forEach((obj) -> {
+            deserialized.add(deserializeInventory((Map<String, Object>)obj));
+        });
+        return deserialized;
+    }
+    
+    private static Map<String, Object> serializeInventory(Inventory inv){
+        Map<String, Object> serialized = new HashMap();
+        serialized.put("size", inv.getSize());
+
+        //Serialize inventory items
+        Map<String, Object> serItems = new HashMap();
+        for(int i = 0; i<inv.getSize(); i++){
+            if(inv.getItem(i) != null){
+                serItems.put(String.valueOf(i), inv.getItem(i).serialize());
+            }
+        }
+        serialized.put("items", serItems);
+        
+        return serialized;
+    }
+    
+    private static Inventory deserializeInventory(Map<String, Object> inv){
+        Integer size = (Integer)inv.get("size");
+        Inventory deserialized = Bukkit.createInventory(null, size);
+        Map<String, Map<String, Object>> items = (HashMap)inv.get("items");
+        
+        items.values().forEach((item) -> {
+            deserialized.addItem(ItemStack.deserialize(item));
+        });
+        return deserialized;
+    }
     
 }
