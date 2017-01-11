@@ -7,14 +7,24 @@ package vsehoarena;
 
 import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.world.DataException;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.xml.parsers.ParserConfigurationException;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.io.BukkitObjectInputStream;
+import org.bukkit.util.io.BukkitObjectOutputStream;
 import org.xml.sax.SAXException;
 
 /**
@@ -28,13 +38,7 @@ public class VsehoArena extends JavaPlugin {
     private ArenaBuilder aBuilder = null;
 
     public static void main(String[] args) {
-//        try {
-//            aBuilder.loadArena();
-//        } catch (ParserConfigurationException ex) {
-//            Logger.getLogger(VsehoArena.class.getName()).log(Level.SEVERE, null, ex);
-//        } catch (SAXException ex) {
-//            Logger.getLogger(VsehoArena.class.getName()).log(Level.SEVERE, null, ex);
-//        }
+        
     }
 
     @Override

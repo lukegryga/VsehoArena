@@ -11,6 +11,8 @@ import com.sk89q.worldedit.MaxChangedBlocksException;
 import com.sk89q.worldedit.Vector;
 import com.sk89q.worldedit.bukkit.BukkitWorld;
 import com.sk89q.worldedit.world.DataException;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -32,8 +34,12 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Chest;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.util.io.BukkitObjectInputStream;
+import org.bukkit.util.io.BukkitObjectOutputStream;
+import org.yaml.snakeyaml.external.biz.base64Coder.Base64Coder;
 
 /**
  *
@@ -153,17 +159,21 @@ public class Arena {
     }
     
     public void showWildInv(int number, Player p){
-        if(number-1 < this.wildItems.size()){
-            p.openInventory(wildItems.get(number-1));
-        }else{
-            p.sendMessage("This inventory doesn't exist.");
+        number--;
+        if(number >= 50){
+            p.sendMessage("[Arena]: Limit of wild inventories (50) reached.");
+            return;
         }
+        while(number >= this.wildItems.size() ){
+            p.sendMessage("[Arena]: " + createNewWildInv());
+        }
+        p.openInventory(wildItems.get(number));
     }
     
     public String createNewWildInv(){
         Inventory newInv = Bukkit.createInventory(null, 54);
         wildItems.add(newInv);
-        return "Next " + wildItems.size() + ". inventory was created.";
+        return "Inventory " + wildItems.size() + " created.";
     }
     
     /**
@@ -214,7 +224,8 @@ public class Arena {
     
     public void fillStartChest(Chest ch){
         for(ItemStack item : startItems.getContents()){
-            ch.getInventory().addItem(item);
+            if(item != null)
+                ch.getInventory().addItem(item);
         }
     }
     
@@ -226,7 +237,8 @@ public class Arena {
             for(int i = 0; i<inv.getSize(); i++){
                 ItemStack item = inv.getItem(i);
                 int rand = random.nextInt(maxI);
-                lWildChests.get(rand).getInventory().addItem(item);
+                if(item != null)
+                    lWildChests.get(rand).getInventory().addItem(item);
             }
         }
     }
@@ -299,29 +311,35 @@ public class Arena {
     
     private static Map<String, Object> serializeInventory(Inventory inv){
         Map<String, Object> serialized = new HashMap();
-        serialized.put("size", inv.getSize());
-
-        //Serialize inventory items
-        Map<String, Object> serItems = new HashMap();
-        for(int i = 0; i<inv.getSize(); i++){
-            if(inv.getItem(i) != null){
-                serItems.put(String.valueOf(i), inv.getItem(i).serialize());
+        try {
+            ByteArrayOutputStream os = new ByteArrayOutputStream();
+            BukkitObjectOutputStream boos = new BukkitObjectOutputStream(os);
+            boos.writeInt(inv.getSize());
+            for(int i = 0; i < inv.getSize(); i++){
+                boos.writeObject(inv.getItem(i));
             }
+            boos.close();
+            serialized.put("inventory", Base64Coder.encode(os.toByteArray()));
+            boos.close();
+        } catch (IOException ex) {
+            Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Deserializing inventory failed", ex);
         }
-        serialized.put("items", serItems);
-        
         return serialized;
     }
     
     private static Inventory deserializeInventory(Map<String, Object> inv){
-        Integer size = (Integer)inv.get("size");
-        Inventory deserialized = Bukkit.createInventory(null, size);
-        Map<String, Map<String, Object>> items = (HashMap)inv.get("items");
-        
-        items.values().forEach((item) -> {
-            deserialized.addItem(ItemStack.deserialize(item));
-        });
-        return deserialized;
+        try {
+            ByteArrayInputStream is = new ByteArrayInputStream(Base64Coder.decode((char[])inv.get("inventory")));
+            BukkitObjectInputStream bois = new BukkitObjectInputStream(is);
+            Inventory deserialized = Bukkit.createInventory(null, bois.readInt());
+            for(int i = 0; i < deserialized.getSize(); i++){
+                deserialized.setItem(i, (ItemStack)bois.readObject());
+            }
+            return deserialized;
+        } catch (ClassNotFoundException | IOException ex) {
+            Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Deserializing inventory failed", ex);
+        }
+        return Bukkit.createInventory(null, 54);
     }
     
 }

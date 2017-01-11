@@ -15,6 +15,7 @@ import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
 import org.bukkit.block.Chest;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -56,8 +57,8 @@ public class Game implements Listener{
         if(gameInProgress){
             return "[Arena] Game is just running";
         }
-        arena.tidyUp();
         arena.regenerateArena();
+        arena.tidyUp();
         alivePlayers = players;
         if(!playersOnStart()){
             return "[Arena]: There are more player then number of Start chests";
@@ -67,7 +68,8 @@ public class Game implements Listener{
         Bukkit.getServer().getPluginManager().registerEvents(this, VsehoArena.SINGLETON);
         players.forEach(p -> {
             p.getInventory().clear();
-            p.sendMessage("[Arena]: Game started");});
+            p.sendMessage("[Arena]: Game started");
+            p.setGameMode(GameMode.SURVIVAL);});
         gameInProgress = true;
         return "[Arena]: You succesfuly started the GAME";
     }
@@ -103,7 +105,7 @@ public class Game implements Listener{
         for(Player p : players){
             Integer roll;
             do{
-                roll = new Integer(random.nextInt(5));
+                roll = new Integer(random.nextInt(arena.getStartChests().size()));
             }while(rolled.contains(roll));
             p.teleport(lChests.get(roll).getLocation().add(new Vector(0,2,0)));
             arena.fillStartChest(lChests.get(roll));
