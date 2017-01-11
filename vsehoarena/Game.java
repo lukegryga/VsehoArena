@@ -110,6 +110,8 @@ public class Game implements Listener{
             p.teleport(lChests.get(roll).getLocation().add(new Vector(0,2,0)));
             arena.fillStartChest(lChests.get(roll));
             p.setHealth(20);
+            p.setFoodLevel(20);
+            p.setSaturation(5);
             rolled.add(roll);
         }
         return true;

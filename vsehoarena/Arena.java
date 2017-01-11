@@ -109,8 +109,6 @@ public class Arena {
             Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Arena " + name + " was not found", ex);
             return null;
         }
-        Bukkit.getServer().getConsoleSender().sendMessage(deserialized.toString());
-        
         Location aLoc1 = Location.deserialize((Map<String, Object>)deserialized.get("loc1"));
         Location aLoc2 = Location.deserialize((Map<String, Object>)deserialized.get("loc2"));
         Set<Chest> aStartChst = deserializeChests((Map<String, Object>)deserialized.get("startChests"));
@@ -118,13 +116,6 @@ public class Arena {
         Inventory aStartInv = deserializeInventory((Map<String, Object>)deserialized.get("startItems"));
         List<Inventory> aWildInvs = deserializeInventories((Map<String, Object>)deserialized.get("wildItems"));
         Arena a = new Arena(name, aLoc1, aLoc2, aWildChst, aStartChst, aWildInvs, aStartInv);
-        System.out.println(a.name);
-        System.out.println(a.l1);
-        System.out.println(a.l2);
-        System.out.println(serializeChestLocations(a.startChests));
-        System.out.println(serializeChestLocations(a.wildChests));
-        System.out.println(serializeInventory(a.startItems));
-        System.out.println(serializeInventories(a.wildItems));
         return a;
     }
 
