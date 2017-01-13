@@ -21,9 +21,11 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Random;
 import java.util.Set;
 import java.util.logging.Level;
@@ -33,10 +35,14 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.block.Chest;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryType;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.util.io.BukkitObjectInputStream;
 import org.bukkit.util.io.BukkitObjectOutputStream;
 import org.yaml.snakeyaml.external.biz.base64Coder.Base64Coder;
@@ -45,7 +51,7 @@ import org.yaml.snakeyaml.external.biz.base64Coder.Base64Coder;
  *
  * @author lukeg
  */
-public class Arena {
+public class Arena implements Listener{
     
     
     private final Random random = new Random();
@@ -58,6 +64,8 @@ public class Arena {
     
     private Location l1;
     private Location l2;
+    
+    private boolean registered = false;
 
     public Arena(String name, Location l1, Location l2){
         this(name, l1, l2, new HashSet(), new HashSet(), new LinkedList(), null);
@@ -66,16 +74,18 @@ public class Arena {
     public Arena(String name, Location l1, Location l2, Set<Chest> wildChests, Set<Chest> startChests,
             List<Inventory> wildItems, Inventory startItems){
         this.name = name;
-        this.l1 = l1;
-        this.l2 = l2;
+        this.l1 = UtilLib.getMin(l1, l2);
+        this.l2 = UtilLib.getMax(l1, l2);
         this.wildChests = wildChests;
         this.startChests = startChests;
         this.wildItems = wildItems;
         this.startItems = startItems;
         if(startItems == null){
-            this.startItems = Bukkit.createInventory(null, 54);
+            this.startItems = Bukkit.createInventory(null, 27);
         }
         this.arenaGame = new Game(this);
+        generateSchematic();
+        VsehoArena.SINGLETON.getServer().getPluginManager().registerEvents(this, VsehoArena.SINGLETON);
     }
 
     public String getName() {
@@ -151,6 +161,8 @@ public class Arena {
     
     public void showWildInv(int number, Player p){
         number--;
+        if(number < 0)
+            number = 0;
         if(number >= 50){
             p.sendMessage("[Arena]: Limit of wild inventories (50) reached.");
             return;
@@ -162,14 +174,23 @@ public class Arena {
     }
     
     public String createNewWildInv(){
-        Inventory newInv = Bukkit.createInventory(null, 54);
+        Inventory newInv = Bukkit.createInventory(null, 54, "Wild Items [" + (wildItems.size() + 1) + "]");
+        ItemStack next = new ItemStack(Material.BANNER,1);
+        ItemStack previous = new ItemStack(Material.BANNER,1);
+        ItemMeta itemLabel = next.getItemMeta();
+        itemLabel.setDisplayName("NEXT");
+        next.setItemMeta(itemLabel);
+        itemLabel = previous.getItemMeta();
+        itemLabel.setDisplayName("PREVIOUS");
+        previous.setItemMeta(itemLabel);
+        newInv.setItem(53, next);
+        newInv.setItem(45, previous);
         wildItems.add(newInv);
         return "Inventory " + wildItems.size() + " created.";
     }
     
     /**
      * Register chest in arena. If arena already has registered this chest, cancel old registration and create new one.
-     * @param p - player who report will be send
      * @param startChest if true, then register the start chest, the wild chest otherwise
      * @param l1
      * @param l2
@@ -187,6 +208,24 @@ public class Arena {
             }
         }
     }
+    
+    /**
+     * Generates schematic from cuboid defined by l1 and l2 and saves to plugin's data folder
+     */
+    public final void generateSchematic(){
+        Vector start = new Vector(l1.getBlockX(), l1.getBlockY(), l1.getBlockZ());
+        Vector offset = new Vector(l2.getBlockX() - l1.getBlockX(), 
+                l2.getBlockY() - l1.getBlockY(), l2.getBlockZ() - l1.getBlockZ());
+        CuboidClipboard cb = new CuboidClipboard(offset, start);
+        EditSession es = new EditSession(new BukkitWorld(l1.getWorld()), 999999999);
+        File file = new File(VsehoArena.SINGLETON.getDataFolder(), name + ".schematic");
+        cb.copy(es);
+        try {
+            cb.saveSchematic(file);
+        } catch (DataException | IOException ex) {
+            Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, null, ex);
+        }
+    }
 
     
     public void regenerateArena(){
@@ -194,12 +233,9 @@ public class Arena {
             EditSession es = new EditSession(new BukkitWorld(l1.getWorld()), 999999999);
             File schematicFile = new File(VsehoArena.SINGLETON.getDataFolder(), name + ".schematic");
             CuboidClipboard clipboard = CuboidClipboard.loadSchematic(schematicFile);
-            Location min = UtilLib.getMin(l1, l2);
-            Vector origin = new Vector(min.getBlockX(), min.getBlockY(), min.getBlockZ());
+            Vector origin = new Vector(l1.getBlockX(), l1.getBlockY(), l1.getBlockZ());
             clipboard.paste(es, origin, false);
-        } catch (IOException | DataException ex) {
-            Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Arena regenerating failed", ex);
-        } catch (MaxChangedBlocksException ex) {
+        } catch (IOException | DataException | MaxChangedBlocksException ex) {
             Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Arena regenerating failed", ex);
         }
     }
@@ -211,6 +247,9 @@ public class Arena {
     public void tidyUp(){
         wildChests.forEach((ch) -> {ch.getInventory().clear();});
         startChests.forEach(ch -> {ch.getInventory().clear();});
+        l1.getWorld().getEntities().stream()
+                .filter((e) -> {return UtilLib.isIn3D(l1, l2, e.getLocation()) && !(e instanceof Player);})
+                .forEach(e -> e.remove());
     }
     
     public void fillStartChest(Chest ch){
@@ -254,7 +293,6 @@ public class Arena {
             objectOS.close();
         } catch (IOException ex) {
             Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Saving arena failed", ex);
-            return;
         }
     }
                 
@@ -310,7 +348,7 @@ public class Arena {
                 boos.writeObject(inv.getItem(i));
             }
             boos.close();
-            serialized.put("inventory", Base64Coder.encode(os.toByteArray()));
+            serialized.put(inv.getName(), Base64Coder.encode(os.toByteArray()));
             boos.close();
         } catch (IOException ex) {
             Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Deserializing inventory failed", ex);
@@ -320,9 +358,10 @@ public class Arena {
     
     private static Inventory deserializeInventory(Map<String, Object> inv){
         try {
-            ByteArrayInputStream is = new ByteArrayInputStream(Base64Coder.decode((char[])inv.get("inventory")));
+            Entry <String, Object> eInv = inv.entrySet().iterator().next();
+            ByteArrayInputStream is = new ByteArrayInputStream(Base64Coder.decode((char[])eInv.getValue()));
             BukkitObjectInputStream bois = new BukkitObjectInputStream(is);
-            Inventory deserialized = Bukkit.createInventory(null, bois.readInt());
+            Inventory deserialized = Bukkit.createInventory(null, bois.readInt(),eInv.getKey());
             for(int i = 0; i < deserialized.getSize(); i++){
                 deserialized.setItem(i, (ItemStack)bois.readObject());
             }
@@ -331,6 +370,26 @@ public class Arena {
             Logger.getLogger(Arena.class.getName()).log(Level.SEVERE, "Deserializing inventory failed", ex);
         }
         return Bukkit.createInventory(null, 54);
+    }
+    
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event){
+        if(event.getInventory().getName().startsWith("Wild Items")){
+            ItemStack clicked = event.getCurrentItem();
+            if(clicked == null)
+                return;
+            if(clicked.getType().equals(Material.BANNER) && clicked.getItemMeta().hasDisplayName()){
+                Player player = (Player)event.getWhoClicked();
+                if(clicked.getItemMeta().getDisplayName().equalsIgnoreCase("next")){
+                    int index = wildItems.indexOf(event.getInventory()) + 2;
+                    showWildInv(index, player);
+                }else if(event.getCurrentItem().getItemMeta().getDisplayName().equalsIgnoreCase("previous")){
+                    int index = wildItems.indexOf(event.getInventory());
+                    showWildInv(index, player);
+                }
+                event.setCancelled(true);
+            }
+        }
     }
     
 }

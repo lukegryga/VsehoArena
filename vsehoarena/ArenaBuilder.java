@@ -99,6 +99,10 @@ public class ArenaBuilder implements Listener{
         }
         return a;
     }
+
+    public List<Arena> getArenas() {
+        return arenas;
+    }
     
     /**
      * Create new arena and store it.
@@ -109,12 +113,6 @@ public class ArenaBuilder implements Listener{
         if(l1 != null & l2 != null){
             Arena arena = new Arena(name, l1, l2);
             arenas.add(arena);
-            try{
-                generateSchematic(name);
-            }catch (IOException | DataException e){
-                Logger.getLogger(ArenaBuilder.class.getName()).log(Level.SEVERE, null, e);
-                p.sendMessage("[Arena]: Error while saving shematic file. Save it manually.");
-            }
             p.sendMessage("[Arena]: Arena " + name + " has been created");
         }else{
             p.sendMessage("[Arena]: Both Loc1 and Loc 2 must be set");
@@ -125,26 +123,6 @@ public class ArenaBuilder implements Listener{
         arenas.forEach((a) -> {
             a.saveArena();
         });
-    }
-
-    /**
-     * Generates schematic from cuboid defined by l1 and l2 and saves to plugin's data folder
-     * @param name Name of generated schematic
-     * @throws IOException
-     * @throws DataException 
-     */
-    @SuppressWarnings("deprecated")
-    public void generateSchematic(String name) throws IOException, DataException{
-        Location min = UtilLib.getMin(l1, l2);
-        Location max = UtilLib.getMax(l1, l2);
-        Vector start = new Vector(min.getBlockX(), min.getBlockY(), min.getBlockZ());
-        Vector offset = new Vector(max.getBlockX() - min.getBlockX(), 
-                max.getBlockY() - min.getBlockY(), max.getBlockZ() - min.getBlockZ());
-        CuboidClipboard cb = new CuboidClipboard(offset, start);
-        EditSession es = new EditSession(new BukkitWorld(l1.getWorld()), 999999999);
-        File file = new File(VsehoArena.SINGLETON.getDataFolder(), name + ".schematic");
-        cb.copy(es);
-        cb.saveSchematic(file);
     }
     
     public void registerChest(Player p, String arenaName, boolean start){

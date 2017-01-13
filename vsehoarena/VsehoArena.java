@@ -5,27 +5,10 @@
  */
 package vsehoarena;
 
-import com.sk89q.worldedit.MaxChangedBlocksException;
-import com.sk89q.worldedit.world.DataException;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import javax.xml.parsers.ParserConfigurationException;
-import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.event.inventory.InventoryType;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.util.io.BukkitObjectInputStream;
-import org.bukkit.util.io.BukkitObjectOutputStream;
-import org.xml.sax.SAXException;
 
 /**
  *
@@ -58,6 +41,34 @@ public class VsehoArena extends JavaPlugin {
         
         switch(args.length){
             case 1:
+                Arena arena = null;
+                for(Arena a : aBuilder.getArenas()){
+                    if(UtilLib.isIn3D(a.getL1(), a.getL2(), pSender.getLocation())){
+                        arena = a;
+                        break;
+                    }
+                }
+                if(arena == null){
+                    pSender.sendMessage("You are not in the arena, please wirte an arena name at the end of command");
+                    return false;
+                }
+                if(args[0].equalsIgnoreCase("addstart")){
+                    aBuilder.registerChest(pSender, arena.getName(), true);
+                }else if(args[0].equalsIgnoreCase("addwild")){
+                    aBuilder.registerChest(pSender, arena.getName(), false);
+                }else if(args[0].equalsIgnoreCase("start")){
+                    arena.startGame();
+                }else if(args[0].equalsIgnoreCase("regen")){
+                    arena.regenerateArena();
+                }else if(args[0].equalsIgnoreCase("startitems")){
+                    arena.showStartInv(pSender);
+                }else if(args[0].equalsIgnoreCase("wilditems")){
+                    arena.showWildInv(1, pSender);
+                }else if(args[0].equalsIgnoreCase("update")){
+                    arena.generateSchematic();
+                }else if(args[0].equalsIgnoreCase("clear")){
+                    arena.tidyUp();
+                }
                 break;
             
             case 2:
@@ -84,6 +95,10 @@ public class VsehoArena extends JavaPlugin {
                     Arena a = aBuilder.getArena(args[1], pSender);
                     if(a != null)
                         a.showWildInv(1, pSender);
+                }else if(args[0].equalsIgnoreCase("update")){
+                    Arena a = aBuilder.getArena(args[1], pSender);
+                    if(a != null)
+                        a.generateSchematic();
                 }
                 break;
                 
