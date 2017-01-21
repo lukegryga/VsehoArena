@@ -51,7 +51,7 @@ import org.yaml.snakeyaml.external.biz.base64Coder.Base64Coder;
  *
  * @author lukeg
  */
-public class Arena implements Listener{
+public class Arena{
     
     
     private final Random random = new Random();
@@ -59,33 +59,30 @@ public class Arena implements Listener{
     private Game arenaGame;
     private String name;
     private Set<Chest> wildChests, startChests;
-    private List<Inventory> wildItems;
+    private ControlableChestInventory wildInventory;
     private Inventory startItems;
     
     private Location l1;
     private Location l2;
     
-    private boolean registered = false;
-
     public Arena(String name, Location l1, Location l2){
-        this(name, l1, l2, new HashSet(), new HashSet(), new LinkedList(), null);
+        this(name, l1, l2, new HashSet(), new HashSet(), ControlableChestInventory.newInstance("Wild Items"), null);
     }
     
     public Arena(String name, Location l1, Location l2, Set<Chest> wildChests, Set<Chest> startChests,
-            List<Inventory> wildItems, Inventory startItems){
+            ControlableChestInventory wildInventory, Inventory startItems){
         this.name = name;
         this.l1 = UtilLib.getMin(l1, l2);
         this.l2 = UtilLib.getMax(l1, l2);
         this.wildChests = wildChests;
         this.startChests = startChests;
-        this.wildItems = wildItems;
+        this.wildInventory = wildInventory;
         this.startItems = startItems;
         if(startItems == null){
             this.startItems = Bukkit.createInventory(null, 27);
         }
         this.arenaGame = new Game(this);
         generateSchematic();
-        VsehoArena.SINGLETON.getServer().getPluginManager().registerEvents(this, VsehoArena.SINGLETON);
     }
 
     public String getName() {
@@ -124,8 +121,8 @@ public class Arena implements Listener{
         Set<Chest> aStartChst = deserializeChests((Map<String, Object>)deserialized.get("startChests"));
         Set<Chest> aWildChst = deserializeChests((Map<String, Object>)deserialized.get("wildChests"));
         Inventory aStartInv = deserializeInventory((Map<String, Object>)deserialized.get("startItems"));
-        List<Inventory> aWildInvs = deserializeInventories((Map<String, Object>)deserialized.get("wildItems"));
-        Arena a = new Arena(name, aLoc1, aLoc2, aWildChst, aStartChst, aWildInvs, aStartInv);
+        ControlableChestInventory aWildInv = ControlableChestInventory.deserialize((Map<String, Object>)deserialized.get("wildItems"));
+        Arena a = new Arena(name, aLoc1, aLoc2, aWildChst, aStartChst, aWildInv, aStartInv);
         return a;
     }
 
@@ -159,34 +156,8 @@ public class Arena implements Listener{
         p.openInventory(startItems);
     }
     
-    public void showWildInv(int number, Player p){
-        number--;
-        if(number < 0)
-            number = 0;
-        if(number >= 50){
-            p.sendMessage("[Arena]: Limit of wild inventories (50) reached.");
-            return;
-        }
-        while(number >= this.wildItems.size() ){
-            p.sendMessage("[Arena]: " + createNewWildInv());
-        }
-        p.openInventory(wildItems.get(number));
-    }
-    
-    public String createNewWildInv(){
-        Inventory newInv = Bukkit.createInventory(null, 54, "Wild Items [" + (wildItems.size() + 1) + "]");
-        ItemStack next = new ItemStack(Material.BANNER,1);
-        ItemStack previous = new ItemStack(Material.BANNER,1);
-        ItemMeta itemLabel = next.getItemMeta();
-        itemLabel.setDisplayName("NEXT");
-        next.setItemMeta(itemLabel);
-        itemLabel = previous.getItemMeta();
-        itemLabel.setDisplayName("PREVIOUS");
-        previous.setItemMeta(itemLabel);
-        newInv.setItem(53, next);
-        newInv.setItem(45, previous);
-        wildItems.add(newInv);
-        return "Inventory " + wildItems.size() + " created.";
+    public void showWildInv(Player p){
+        p.openInventory(wildInventory.getInventory());
     }
     
     /**
@@ -263,14 +234,14 @@ public class Arena implements Listener{
         List<Chest> lWildChests = new LinkedList();
         lWildChests.addAll(wildChests);
         int maxI = lWildChests.size();
-        for(Inventory inv : wildItems){
-            for(int i = 0; i<inv.getSize(); i++){
-                ItemStack item = inv.getItem(i);
-                int rand = random.nextInt(maxI);
-                if(item != null)
-                    lWildChests.get(rand).getInventory().addItem(item);
+        List<ItemStack> wildItems = wildInventory.getCompleteItems();
+
+        wildItems.forEach((item) -> {
+            int rand = random.nextInt(maxI);
+            if (item != null) {
+                lWildChests.get(rand).getInventory().addItem(item);
             }
-        }
+        });
     }
     
     
@@ -285,7 +256,7 @@ public class Arena implements Listener{
         serialized.put("startChests", serializeChestLocations(startChests));
         serialized.put("wildChests", serializeChestLocations(wildChests));
         serialized.put("startItems", serializeInventory(startItems));
-        serialized.put("wildItems", serializeInventories(wildItems));
+        serialized.put("wildItems", wildInventory.serialize());
         try {
             fOutStream = new FileOutputStream(arenaFile);
             objectOS = new ObjectOutputStream(fOutStream);
@@ -372,24 +343,24 @@ public class Arena implements Listener{
         return Bukkit.createInventory(null, 54);
     }
     
-    @EventHandler
-    public void onInventoryClick(InventoryClickEvent event){
-        if(event.getInventory().getName().startsWith("Wild Items")){
-            ItemStack clicked = event.getCurrentItem();
-            if(clicked == null)
-                return;
-            if(clicked.getType().equals(Material.BANNER) && clicked.getItemMeta().hasDisplayName()){
-                Player player = (Player)event.getWhoClicked();
-                if(clicked.getItemMeta().getDisplayName().equalsIgnoreCase("next")){
-                    int index = wildItems.indexOf(event.getInventory()) + 2;
-                    showWildInv(index, player);
-                }else if(event.getCurrentItem().getItemMeta().getDisplayName().equalsIgnoreCase("previous")){
-                    int index = wildItems.indexOf(event.getInventory());
-                    showWildInv(index, player);
-                }
-                event.setCancelled(true);
-            }
-        }
-    }
+//    @EventHandler
+//    public void onInventoryClick(InventoryClickEvent event){
+//        if(event.getInventory().getName().startsWith("Wild Items")){
+//            ItemStack clicked = event.getCurrentItem();
+//            if(clicked == null)
+//                return;
+//            if(clicked.getType().equals(Material.BANNER) && clicked.getItemMeta().hasDisplayName()){
+//                Player player = (Player)event.getWhoClicked();
+//                if(clicked.getItemMeta().getDisplayName().equalsIgnoreCase("next")){
+//                    int index = wildItems.indexOf(event.getInventory()) + 2;
+//                    showWildInv(index, player);
+//                }else if(event.getCurrentItem().getItemMeta().getDisplayName().equalsIgnoreCase("previous")){
+//                    int index = wildItems.indexOf(event.getInventory());
+//                    showWildInv(index, player);
+//                }
+//                event.setCancelled(true);
+//            }
+//        }
+//    }
     
 }

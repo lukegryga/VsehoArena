@@ -5,12 +5,7 @@
  */
 package vsehoarena;
 
-import com.sk89q.worldedit.CuboidClipboard;
-import com.sk89q.worldedit.EditSession;
 import java.io.File;
-import java.io.IOException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -18,9 +13,6 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
-import com.sk89q.worldedit.Vector;
-import com.sk89q.worldedit.bukkit.BukkitWorld;
-import com.sk89q.worldedit.world.DataException;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -34,7 +26,7 @@ public class ArenaBuilder implements Listener{
 
     
     private Location l1, l2;
-    private List<Arena> arenas = new LinkedList();
+    private final List<Arena> arenas = new LinkedList();
     
     public ArenaBuilder(){
         File folder = VsehoArena.SINGLETON.getDataFolder();

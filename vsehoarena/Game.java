@@ -30,10 +30,10 @@ import org.bukkit.util.Vector;
  */
 public class Game implements Listener{
 
-    private Arena arena;
-    private Set<Player> players = new HashSet();
+    private final Arena arena;
+    private final Set<Player> players = new HashSet();
     private Set<Player> alivePlayers = new HashSet();
-    private Scoreboard sBoard;
+    private final Scoreboard sBoard;
     private Team team;
     
     private boolean gameInProgress = false;
@@ -99,10 +99,10 @@ public class Game implements Listener{
         }
         List<Chest> lChests = new LinkedList();
         lChests.addAll(arena.getStartChests());
-        for(Player p : players){
+        players.forEach((p) -> {
             Integer roll;
             do{
-                roll = new Integer(random.nextInt(arena.getStartChests().size()));
+                roll = random.nextInt(arena.getStartChests().size());
             }while(rolled.contains(roll));
             p.teleport(lChests.get(roll).getLocation().add(new Vector(0,2,0)));
             arena.fillStartChest(lChests.get(roll));
@@ -110,7 +110,7 @@ public class Game implements Listener{
             p.setFoodLevel(20);
             p.setSaturation(5);
             rolled.add(roll);
-        }
+        });
         return true;
     }
     
